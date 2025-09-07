@@ -1,0 +1,48 @@
+name: Deploy API on Push
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (metadata only)
+        uses: actions/checkout@v4
+
+      - name: Remote deploy (pull, composer, migrate, cache, reload)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.API_DIR }}"
+
+            echo ">> Pull latest"
+            git fetch --all
+            git reset --hard origin/main
+
+            echo ">> Composer install (prod)"
+            export COMPOSER_ALLOW_SUPERUSER=1
+            export COMPOSER_MEMORY_LIMIT=-1
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+            echo ">> Migrate & cache"
+            php artisan migrate --force
+            php artisan config:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan optimize
+
+            echo ">> Permissions"
+            chown -R www-data:www-data storage bootstrap/cache || true
+            find storage bootstrap/cache -type d -exec chmod 775 {} \; || true
+
+            echo ">> Reload services"
+            systemctl reload "${{ secrets.PHP_FPM_SERVICE }}"
+            nginx -t && systemctl reload nginx
