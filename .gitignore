@@ -40,3 +40,9 @@ node_modules
 storage/*.key
 storage/logs
 storage/framework/cache/*
+vendor
+node_modules
+.env
+storage/*.key
+storage/logs
+storage/framework/cache/*
